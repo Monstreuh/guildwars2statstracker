@@ -269,7 +269,43 @@
       $('#clearBtn').addEventListener('click', clearKey);
       $('#priceBtn').addEventListener('click', () => lookupPrice(parseInt($('#itemId').value,10)));
       if (saved) loadAll().catch(console.error);
-    });
+    });<!-- Champ pour entrer la clé API -->
+<label for="apiKey">Votre clé API Guild Wars 2 :</label>
+<input type="text" id="apiKey" placeholder="Collez votre clé ici">
+<button id="loadData">Charger mes stats</button>
+
+<h2>Nom de compte : <span id="account-name">—</span></h2>
+<h2>Or : <span id="wallet-gold">—</span> pièces</h2>
+
+<script>
+document.getElementById("loadData").addEventListener("click", function () {
+  const apiKey = document.getElementById("apiKey").value.trim();
+  if (!apiKey) {
+    alert("Merci de coller votre clé API !");
+    return;
+  }
+
+  // Récupérer nom de compte
+  fetch(`https://api.guildwars2.com/v2/account?access_token=${apiKey}`)
+    .then(res => res.json())
+    .then(data => {
+      document.getElementById("account-name").textContent = data.name;
+    })
+    .catch(() => alert("Erreur : clé invalide ou problème réseau"));
+
+  // Récupérer portefeuille (or)
+  fetch(`https://api.guildwars2.com/v2/account/wallet?access_token=${apiKey}`)
+    .then(res => res.json())
+    .then(data => {
+      const goldObj = data.find(c => c.id === 1); // ID 1 = pièces d'or
+      if (goldObj) {
+        document.getElementById("wallet-gold").textContent = goldObj.value / 10000;
+      }
+    })
+    .catch(() => alert("Impossible de récupérer le portefeuille"));
+});
+</script>
+
   </script>
 </body>
 </html>
