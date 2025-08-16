@@ -309,3 +309,58 @@ document.getElementById("loadData").addEventListener("click", function () {
   </script>
 </body>
 </html>
+<input type="text" id="apiKey" placeholder="Colle ta clé API ici">
+<button id="loadWallet">Charger le portefeuille</button>
+
+<table id="walletTable" border="1">
+  <thead>
+    <tr>
+      <th>Icône</th>
+      <th>Nom</th>
+      <th>Quantité</th>
+    </tr>
+  </thead>
+  <tbody></tbody>
+</table>
+document.getElementById('loadWallet').addEventListener('click', async () => {
+  const apiKey = document.getElementById('apiKey').value.trim();
+  if (!apiKey) {
+    alert("Merci de saisir ta clé API !");
+    return;
+  }
+
+  try {
+    // 1️⃣ Récupère la liste des devises avec noms + icônes
+    const currenciesResp = await fetch('https://api.guildwars2.com/v2/currencies');
+    const currenciesIds = await currenciesResp.json();
+    const currenciesDataResp = await fetch(`https://api.guildwars2.com/v2/currencies?ids=${currenciesIds.join(',')}`);
+    const currenciesData = await currenciesDataResp.json();
+
+    // 2️⃣ Récupère le portefeuille du joueur
+    const walletResp = await fetch('https://api.guildwars2.com/v2/account/wallet', {
+      headers: { 'Authorization': `Bearer ${apiKey}` }
+    });
+    if (!walletResp.ok) throw new Error("Clé API invalide ou problème de connexion.");
+    const walletData = await walletResp.json();
+
+    // 3️⃣ Associe devises et quantités
+    const tableBody = document.querySelector('#walletTable tbody');
+    tableBody.innerHTML = ''; // vide le tableau avant
+    walletData.forEach(entry => {
+      const currencyInfo = currenciesData.find(c => c.id === entry.id);
+      if (!currencyInfo) return;
+
+      const row = document.createElement('tr');
+      row.innerHTML = `
+        <td><img src="${currencyInfo.icon}" alt="${currencyInfo.name}" width="32"></td>
+        <td>${currencyInfo.name}</td>
+        <td>${entry.value.toLocaleString()}</td>
+      `;
+      tableBody.appendChild(row);
+    });
+
+  } catch (err) {
+    console.error(err);
+    alert("Erreur : " + err.message);
+  }
+});
