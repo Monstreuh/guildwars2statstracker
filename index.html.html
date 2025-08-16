@@ -1,0 +1,275 @@
+{
+    "[html]": {
+
+        "editor.suggest.insertMode": "replace"
+    }
+}<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>GW2 Stats Tracker — MVP</title>
+  <style>
+    :root { --bg:#0f1419; --panel:#151b22; --muted:#9aa4af; --text:#e8edf2; --accent:#8bd3ff; --good:#35d07f; --warn:#ffcf5c; --bad:#ff6b6b; }
+    *{box-sizing:border-box} body{margin:0;font-family:Inter,system-ui,Arial;background:var(--bg);color:var(--text)}
+    header{padding:20px;border-bottom:1px solid #1f2730;background:linear-gradient(180deg,#121922,#0f1419)}
+    h1{margin:0;font-size:22px} .wrap{max-width:1100px;margin:0 auto;padding:20px}
+    .grid{display:grid;grid-template-columns:repeat(12,1fr);gap:16px}
+    .card{grid-column:span 12;background:var(--panel);border:1px solid #1f2730;border-radius:12px;padding:16px}
+    @media(min-width:900px){
+      .span6{grid-column:span 6} .span4{grid-column:span 4} .span8{grid-column:span 8}
+    }
+    h2{font-size:16px;margin:0 0 12px 0;color:#cfe6ff}
+    .row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+    input,button{background:#0e131a;border:1px solid #243142;color:var(--text);border-radius:8px;padding:10px 12px}
+    input{flex:1;min-width:240px} button{cursor:pointer}
+    table{width:100%;border-collapse:collapse} th,td{padding:8px 10px;border-bottom:1px solid #243142}
+    th{text-align:left;color:var(--muted);font-weight:600} tr:hover td{background:#0f1620}
+    .muted{color:var(--muted)} .pill{padding:2px 8px;border-radius:999px;border:1px solid #2b3a4d;color:#cfe6ff;font-size:12px}
+    .ok{color:var(--good)} .warn{color:var(--warn)} .bad{color:var(--bad)}
+    .kpi{display:flex;gap:16px;flex-wrap:wrap}
+    .kpi .box{background:#0e131a;border:1px solid #243142;border-radius:10px;padding:12px 14px;min-width:140px}
+    .box .label{color:var(--muted);font-size:12px} .box .value{font-size:18px;margin-top:4px}
+    .small{font-size:12px}
+    .sep{height:1px;background:#1f2730;margin:12px 0}
+    .note{font-size:12px;color:var(--muted)}
+  </style>
+</head>
+<body>
+  <header>
+    <div class="wrap row" style="justify-content:space-between">
+      <h1>GW2 Stats Tracker — MVP</h1>
+      <span class="pill">API officielle v2</span>
+    </div>
+  </header>
+
+  <div class="wrap grid">
+    <div class="card span12">
+      <h2>Clé API</h2>
+      <div class="row">
+        <input id="apiKey" placeholder="Colle ici ta clé API Guild Wars 2" />
+        <button id="saveBtn">Enregistrer + Charger</button>
+        <button id="clearBtn">Effacer</button>
+        <span id="status" class="muted small"></span>
+      </div>
+      <div class="note">Crée une clé sur account.arena.net → Applications. Coche: account, inventories, characters, wallet, tradingpost, progression.</div>
+    </div>
+
+    <div class="card span6">
+      <h2>Compte</h2>
+      <div class="kpi">
+        <div class="box"><div class="label">Nom</div><div class="value" id="accName">—</div></div>
+        <div class="box"><div class="label">Monde</div><div class="value" id="accWorld">—</div></div>
+        <div class="box"><div class="label">WvW Rang</div><div class="value" id="accWvw">—</div></div>
+        <div class="box"><div class="label">Fractales (AR)</div><div class="value" id="accFractal">—</div></div>
+      </div>
+      <div class="sep"></div>
+      <div class="small muted">Id compte: <span id="accId">—</span></div>
+    </div>
+
+    <div class="card span6">
+      <h2>Portefeuille</h2>
+      <table>
+        <thead><tr><th>Devise</th><th>Quantité</th></tr></thead>
+        <tbody id="walletBody"><tr><td class="muted">—</td><td class="muted">—</td></tr></tbody>
+      </table>
+    </div>
+
+    <div class="card span8">
+      <h2>Personnages</h2>
+      <table>
+        <thead><tr><th>Nom</th><th>Niveau</th><th>Profession</th><th>Élite</th></tr></thead>
+        <tbody id="charsBody"><tr><td class="muted" colspan="4">—</td></tr></tbody>
+      </table>
+    </div>
+
+    <div class="card span4">
+      <h2>Quotidiens</h2>
+      <table>
+        <thead><tr><th>Type</th><th>Succès</th></tr></thead>
+        <tbody id="dailyBody"><tr><td class="muted" colspan="2">—</td></tr></tbody>
+      </table>
+      <div class="note">Source: /v2/achievements/daily (+ détails via /v2/achievements?ids=...)</div>
+    </div>
+
+    <div class="card span12">
+      <h2>Trading Post — lookup rapide</h2>
+      <div class="row">
+        <input id="itemId" type="number" placeholder="ID d'objet (ex: 19721 pour Ori Ingot)"/>
+        <button id="priceBtn">Voir le prix</button>
+      </div>
+      <div id="pricePanel" class="kpi" style="margin-top:12px"></div>
+      <div class="note">Endpoints: /v2/items?ids=ID et /v2/commerce/prices/ID</div>
+    </div>
+  </div>
+
+  <script>
+    const API = 'https://api.guildwars2.com/v2';
+    const $ = (sel) => document.querySelector(sel);
+    const fmtGold = (copper) => {
+      if (copper == null) return '—';
+      const g = Math.floor(copper / 10000);
+      const s = Math.floor((copper % 10000) / 100);
+      const c = copper % 100;
+      return `${g}g ${s}s ${c}c`;
+    };
+
+    function saveKey() {
+      const key = $('#apiKey').value.trim();
+      if (!key) return;
+      localStorage.setItem('GW2_API_KEY', key);
+      $('#status').textContent = 'Clé enregistrée';
+      loadAll().catch(console.error);
+    }
+    function clearKey() {
+      localStorage.removeItem('GW2_API_KEY');
+      $('#apiKey').value = '';
+      $('#status').textContent = 'Clé effacée';
+    }
+    async function gw2(path, auth = false) {
+      const url = new URL(API + path);
+      if (auth) {
+        const key = localStorage.getItem('GW2_API_KEY');
+        if (!key) throw new Error('Clé API manquante');
+        url.searchParams.set('access_token', key);
+      }
+      const res = await fetch(url.toString());
+      if (!res.ok) {
+        const txt = await res.text();
+        throw new Error(`Erreur ${res.status}: ${txt}`);
+      }
+      return res.json();
+    }
+
+    async function loadAccount() {
+      const acc = await gw2('/account', true);
+      $('#accName').textContent = acc.name || '—';
+      $('#accId').textContent = acc.id || '—';
+      $('#accWvw').textContent = acc.wvw_rank ?? '—';
+
+      // Monde
+      const world = acc.world ? await gw2('/worlds?ids=' + acc.world) : null;
+      $('#accWorld').textContent = (world && world[0] && world[0].name) ? world[0].name : '—';
+
+      // Fractales (résistance ar) via account/achievements (id des infusions AR)
+      try {
+        const ach = await gw2('/account/achievements', true);
+        // Petit heuristique: on lit les titres AR via /v2/achievements?ids=...
+        // Pour MVP: on affiche le niveau 'Fractal Level' s'il existe dans account.
+        if (acc.fractal_level) {
+          $('#accFractal').textContent = acc.fractal_level;
+        } else {
+          $('#accFractal').textContent = '—';
+        }
+      } catch {
+        $('#accFractal').textContent = '—';
+      }
+    }
+
+    async function loadWallet() {
+      const wallet = await gw2('/account/wallet', true);
+      // Currencies mapping
+      const ids = wallet.map(w => w.id).join(',');
+      const cur = ids ? await gw2('/currencies?ids=' + ids) : [];
+      const nameById = Object.fromEntries(cur.map(c => [c.id, c.name]));
+      const tbody = $('#walletBody');
+      tbody.innerHTML = '';
+      wallet.forEach(w => {
+        const tr = document.createElement('tr');
+        const td1 = document.createElement('td');
+        const td2 = document.createElement('td');
+        td1.textContent = nameById[w.id] || ('Devise #' + w.id);
+        td2.textContent = w.id === 1 ? fmtGold(w.value) : w.value.toLocaleString('fr-FR');
+        tr.append(td1, td2);
+        tbody.appendChild(tr);
+      });
+      if (!wallet.length) tbody.innerHTML = '<tr><td class="muted">—</td><td class="muted">—</td></tr>';
+    }
+
+    async function loadCharacters() {
+      const names = await gw2('/characters', true);
+      if (!names.length) {
+        $('#charsBody').innerHTML = '<tr><td class="muted" colspan="4">Aucun personnage</td></tr>';
+        return;
+      }
+      // Charge détails par lots
+      const chunk = (arr, size) => arr.length ? [arr.slice(0, size), ...chunk(arr.slice(size), size)] : [];
+      const tbody = $('#charsBody'); tbody.innerHTML = '';
+      for (const batch of chunk(names, 20)) {
+        const encNames = batch.map(encodeURIComponent).join(',');
+        const chars = await gw2('/characters?ids=' + encNames, true);
+        chars.forEach(ch => {
+          const tr = document.createElement('tr');
+          const elite = (ch.specialization || ch.training) ? (ch.specializations?.pve?.find(s => s?.trait_choices)?.id || '') : '';
+          const eliteName = ch.specializations?.pve?.find(s => s?.elite)?.id || '';
+          tr.innerHTML = `
+            <td>${ch.name}</td>
+            <td>${ch.level}</td>
+            <td>${ch.profession}</td>
+            <td>${eliteName || '—'}</td>
+          `;
+          tbody.appendChild(tr);
+        });
+      }
+    }
+
+    async function loadDailies() {
+      const daily = await gw2('/achievements/daily');
+      const types = ['pve','pvp','wvw','fractals'];
+      const allIds = types.flatMap(t => (daily[t]||[]).map(a => a.id));
+      if (!allIds.length) {
+        $('#dailyBody').innerHTML = '<tr><td class="muted" colspan="2">—</td></tr>'; return;
+      }
+      // Détails des succès
+      const details = await gw2('/achievements?ids=' + allIds.join(','));
+      const map = new Map(details.map(d => [d.id, d]));
+      const tbody = $('#dailyBody'); tbody.innerHTML = '';
+      types.forEach(t => {
+        const list = daily[t] || [];
+        const names = list.slice(0,4).map(a => map.get(a.id)?.name || ('#'+a.id));
+        const tr = document.createElement('tr');
+        tr.innerHTML = `<td>${t.toUpperCase()}</td><td>${names.join(' • ')}</td>`;
+        tbody.appendChild(tr);
+      });
+    }
+
+    async function lookupPrice(id) {
+      const panel = $('#pricePanel'); panel.innerHTML = '';
+      if (!id) { panel.innerHTML = '<div class="note">Entre un ID d\'objet.</div>'; return; }
+      const [item] = await gw2('/items?ids=' + id);
+      const price = await gw2('/commerce/prices/' + id).catch(()=>null);
+      const name = item?.name || ('Item #' + id);
+      const rarity = item?.rarity || '—';
+      const buy = price?.buys?.unit_price ?? null;
+      const sell = price?.sells?.unit_price ?? null;
+
+      panel.innerHTML = `
+        <div class="box"><div class="label">Objet</div><div class="value">${name}</div><div class="small muted">${rarity}</div></div>
+        <div class="box"><div class="label">Achat (TP)</div><div class="value">${buy!=null?fmtGold(buy):'—'}</div></div>
+        <div class="box"><div class="label">Vente (TP)</div><div class="value">${sell!=null?fmtGold(sell):'—'}</div></div>
+      `;
+    }
+
+    async function loadAll() {
+      $('#status').textContent = 'Chargement…';
+      try {
+        await Promise.all([loadAccount(), loadWallet(), loadCharacters(), loadDailies()]);
+        $('#status').textContent = 'OK';
+      } catch (e) {
+        console.error(e);
+        $('#status').textContent = 'Erreur: ' + (e.message || e);
+      }
+    }
+
+    // UI wiring
+    document.addEventListener('DOMContentLoaded', () => {
+      const saved = localStorage.getItem('GW2_API_KEY');
+      if (saved) $('#apiKey').value = saved;
+      $('#saveBtn').addEventListener('click', saveKey);
+      $('#clearBtn').addEventListener('click', clearKey);
+      $('#priceBtn').addEventListener('click', () => lookupPrice(parseInt($('#itemId').value,10)));
+      if (saved) loadAll().catch(console.error);
+    });
+  </script>
+</body>
+</html>
